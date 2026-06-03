@@ -1,0 +1,17 @@
+plugins {
+    id 'com.android.application' version '8.2.2'
+}
+android {
+    namespace 'com.binit.luigicamerafix'
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.binit.luigicamerafix"
+        minSdk 28
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+}
+dependencies {
+    compileOnly files('libs/api-82.jar')
+}
