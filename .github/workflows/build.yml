@@ -9,17 +9,115 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - name: Download Xposed API
+          
+      - name: Generate Clean Project Structure
         run: |
+          rm -rf app settings.gradle
           mkdir -p app/libs
-          wget https://github.com/MALTF/XposedBridgeAPI/releases/download/v82/api-82.jar -O app/libs/api-82.jar
+          mkdir -p app/src/main/assets
+          mkdir -p app/src/main/java/com/binit/luigicamerafix
+          
+          cat << 'EOF' > settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          include ':app'
+          EOF
+          
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application' version '8.2.2'
+          }
+          android {
+              namespace 'com.binit.luigicamerafix'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.binit.luigicamerafix"
+                  minSdk 28
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+          }
+          dependencies {
+              compileOnly files('libs/api-82.jar')
+          }
+          EOF
+          
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application android:label="Luigi Camera Fix">
+                  <meta-data android:name="xposedmodule" android:value="true" />
+                  <meta-data android:name="xposeddescription" android:value="Bypasses the vendor timestamp crash." />
+                  <meta-data android:name="xposedminversion" android:value="82" />
+              </application>
+          </manifest>
+          EOF
+          
+          cat << 'EOF' > app/src/main/assets/xposed_init
+          com.binit.luigicamerafix.CameraHook
+          EOF
+          
+          cat << 'EOF' > app/src/main/java/com/binit/luigicamerafix/CameraHook.java
+          package com.binit.luigicamerafix;
+
+          import de.robv.android.xposed.IXposedHookLoadPackage;
+          import de.robv.android.xposed.XC_MethodHook;
+          import de.robv.android.xposed.XposedBridge;
+          import de.robv.android.xposed.XposedHelpers;
+          import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
+
+          public class CameraHook implements IXposedHookLoadPackage {
+              @Override
+              public void handleLoadPackage(LoadPackageParam lpparam) throws Throwable {
+                  if (!lpparam.packageName.equals("com.oplus.camera")) return;
+                  try {
+                      Class<?> cameraMetadataNative = XposedHelpers.findClass("android.hardware.camera2.impl.CameraMetadataNative", lpparam.classLoader);
+                      XposedBridge.hookAllMethods(cameraMetadataNative, "get", new XC_MethodHook() {
+                          @Override
+                          protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                              if (param.hasThrowable()) {
+                                  Throwable t = param.getThrowable();
+                                  if (t instanceof IllegalArgumentException && 
+                                      t.getMessage() != null && 
+                                      t.getMessage().contains("com.oplus.sensor.timestamp")) {
+                                      param.setThrowable(null);
+                                      param.setResult(null);
+                                  }
+                              }
+                          }
+                      });
+                  } catch (Throwable t) {
+                      XposedBridge.log("LuigiCameraFix: Failed to hook method");
+                  }
+              }
+          }
+          EOF
+
+      - name: Download Xposed API
+        run: wget https://github.com/MALTF/XposedBridgeAPI/releases/download/v82/api-82.jar -O app/libs/api-82.jar
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+
       - name: Build APK
         run: gradle assembleDebug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: LuigiCameraFix-ReadyToInstall
           path: app/build/outputs/apk/debug/app-debug.apk
-          
+
