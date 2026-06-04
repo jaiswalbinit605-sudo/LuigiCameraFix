@@ -46,8 +46,8 @@ jobs:
                   applicationId "com.binit.luigicamerafix"
                   minSdk 28
                   targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
+                  versionCode 2
+                  versionName "2.0-Nuclear"
               }
           }
           dependencies {
@@ -60,7 +60,7 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application android:label="Luigi Camera Fix">
                   <meta-data android:name="xposedmodule" android:value="true" />
-                  <meta-data android:name="xposeddescription" android:value="Bypasses the vendor timestamp crash." />
+                  <meta-data android:name="xposeddescription" android:value="Nuclear Bypass for all vendor tags." />
                   <meta-data android:name="xposedminversion" android:value="82" />
               </application>
           </manifest>
@@ -90,9 +90,8 @@ jobs:
                           protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                               if (param.hasThrowable()) {
                                   Throwable t = param.getThrowable();
-                                  if (t instanceof IllegalArgumentException && 
-                                      t.getMessage() != null && 
-                                      t.getMessage().contains("com.oplus.sensor.timestamp")) {
+                                  // The Nuclear Bypass
+                                  if (t instanceof IllegalArgumentException) {
                                       param.setThrowable(null);
                                       param.setResult(null);
                                   }
@@ -120,4 +119,3 @@ jobs:
         with:
           name: LuigiCameraFix-ReadyToInstall
           path: app/build/outputs/apk/debug/app-debug.apk
-
