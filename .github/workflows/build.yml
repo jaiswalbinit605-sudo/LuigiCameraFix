@@ -46,8 +46,8 @@ jobs:
                   applicationId "com.binit.luigicamerafix"
                   minSdk 28
                   targetSdk 34
-                  versionCode 4
-                  versionName "4.0-Stable"
+                  versionCode 5
+                  versionName "5.0-TypeMatch"
               }
           }
           dependencies {
@@ -60,7 +60,7 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application android:label="Luigi Camera Fix">
                   <meta-data android:name="xposedmodule" android:value="true" />
-                  <meta-data android:name="xposeddescription" android:value="Stable Fix: Targeted Timestamp + OZO Audio Bypass." />
+                  <meta-data android:name="xposeddescription" android:value="Bypasses advanced OIS and framework tag validation checks." />
                   <meta-data android:name="xposedminversion" android:value="82" />
               </application>
           </manifest>
@@ -84,18 +84,40 @@ jobs:
               public void handleLoadPackage(LoadPackageParam lpparam) throws Throwable {
                   if (!lpparam.packageName.equals("com.oplus.camera")) return;
 
-                  // 1. Photo Fix (Targeted Sniper Method)
+                  // 1. Photo Shutter & Missing Key Exception Shield
                   try {
                       Class<?> cameraMetadataNative = XposedHelpers.findClass("android.hardware.camera2.impl.CameraMetadataNative", lpparam.classLoader);
                       XposedBridge.hookAllMethods(cameraMetadataNative, "get", new XC_MethodHook() {
                           @Override
                           protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                              if (param.hasThrowable()) {
-                                  Throwable t = param.getThrowable();
-                                  if (t instanceof IllegalArgumentException && 
-                                      t.getMessage() != null && 
-                                      t.getMessage().contains("com.oplus.sensor.timestamp")) {
-                                      param.setThrowable(null);
+                              if (param.hasThrowable() && param.getThrowable() instanceof IllegalArgumentException) {
+                                  param.setThrowable(null); // Kill the crash exception
+
+                                  // Dynamically check what data type the key expected and return a safe default
+                                  try {
+                                      if (param.args != null && param.args.length > 0 && param.args[0] != null) {
+                                          Object keyObj = param.args[0];
+                                          Class<?> type = (Class<?>) XposedHelpers.callMethod(keyObj, "getType");
+                                          
+                                          if (type == Integer.class || type == int.class) {
+                                              param.setResult(0);
+                                          } else if (type == Boolean.class || type == boolean.class) {
+                                              param.setResult(false);
+                                          } else if (type == String.class) {
+                                              param.setResult("");
+                                          } else if (type == Byte.class || type == byte.class) {
+                                              param.setResult((byte) 0);
+                                          } else if (type == byte[].class) {
+                                              param.setResult(new byte[0]);
+                                          } else if (type == int[].class) {
+                                              param.setResult(new int[0]);
+                                          } else {
+                                              param.setResult(null);
+                                          }
+                                      } else {
+                                          param.setResult(null);
+                                      }
+                                  } catch (Throwable e) {
                                       param.setResult(null);
                                   }
                               }
@@ -103,7 +125,7 @@ jobs:
                       });
                   } catch (Throwable t) { }
 
-                  // 2. Video Fix (Bypass Nokia OZO Audio)
+                  // 2. Video Fix (Bypass Nokia OZO Audio Codec crash)
                   try {
                       Class<?> mediaCodecClass = XposedHelpers.findClass("android.media.MediaCodec", lpparam.classLoader);
                       XposedBridge.hookAllMethods(mediaCodecClass, "createEncoderByType", new XC_MethodHook() {
@@ -112,7 +134,7 @@ jobs:
                               if (param.args != null && param.args.length > 0 && param.args[0] instanceof String) {
                                   String codecType = (String) param.args[0];
                                   if (codecType.contains("ozoaudio")) {
-                                      param.args[0] = "audio/mp4a-latm"; // Redirect to standard AAC
+                                      param.args[0] = "audio/mp4a-latm"; // Force standard AAC audio stream
                                   }
                               }
                           }
