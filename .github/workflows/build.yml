@@ -46,8 +46,8 @@ jobs:
                   applicationId "com.binit.luigicamerafix"
                   minSdk 28
                   targetSdk 34
-                  versionCode 5
-                  versionName "5.0-TypeMatch"
+                  versionCode 6
+                  versionName "6.0-UltimateShield"
               }
           }
           dependencies {
@@ -60,7 +60,7 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application android:label="Luigi Camera Fix">
                   <meta-data android:name="xposedmodule" android:value="true" />
-                  <meta-data android:name="xposeddescription" android:value="Bypasses advanced OIS and framework tag validation checks." />
+                  <meta-data android:name="xposeddescription" android:value="Ultimate Shield: Blanket exception suppression for all metadata tags." />
                   <meta-data android:name="xposedminversion" android:value="82" />
               </application>
           </manifest>
@@ -73,6 +73,9 @@ jobs:
           cat << 'EOF' > app/src/main/java/com/binit/luigicamerafix/CameraHook.java
           package com.binit.luigicamerafix;
 
+          import java.lang.reflect.Method;
+          import java.lang.reflect.Modifier;
+          
           import de.robv.android.xposed.IXposedHookLoadPackage;
           import de.robv.android.xposed.XC_MethodHook;
           import de.robv.android.xposed.XposedBridge;
@@ -84,61 +87,62 @@ jobs:
               public void handleLoadPackage(LoadPackageParam lpparam) throws Throwable {
                   if (!lpparam.packageName.equals("com.oplus.camera")) return;
 
-                  // 1. Photo Shutter & Missing Key Exception Shield
+                  // 1. The Ultimate Shield: Hook ALL methods in CameraMetadataNative
                   try {
                       Class<?> cameraMetadataNative = XposedHelpers.findClass("android.hardware.camera2.impl.CameraMetadataNative", lpparam.classLoader);
-                      XposedBridge.hookAllMethods(cameraMetadataNative, "get", new XC_MethodHook() {
+                      XC_MethodHook universalShield = new XC_MethodHook() {
                           @Override
                           protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                               if (param.hasThrowable() && param.getThrowable() instanceof IllegalArgumentException) {
-                                  param.setThrowable(null); // Kill the crash exception
-
-                                  // Dynamically check what data type the key expected and return a safe default
-                                  try {
-                                      if (param.args != null && param.args.length > 0 && param.args[0] != null) {
-                                          Object keyObj = param.args[0];
-                                          Class<?> type = (Class<?>) XposedHelpers.callMethod(keyObj, "getType");
-                                          
-                                          if (type == Integer.class || type == int.class) {
-                                              param.setResult(0);
-                                          } else if (type == Boolean.class || type == boolean.class) {
-                                              param.setResult(false);
-                                          } else if (type == String.class) {
-                                              param.setResult("");
-                                          } else if (type == Byte.class || type == byte.class) {
-                                              param.setResult((byte) 0);
-                                          } else if (type == byte[].class) {
-                                              param.setResult(new byte[0]);
-                                          } else if (type == int[].class) {
-                                              param.setResult(new int[0]);
-                                          } else {
-                                              param.setResult(null);
-                                          }
-                                      } else {
-                                          param.setResult(null);
-                                      }
-                                  } catch (Throwable e) {
+                                  param.setThrowable(null); // Obliterate the crash exception
+                                  
+                                  // Dynamically return safe fallback values based on what the method expected
+                                  Class<?> returnType = param.method.getReturnType();
+                                  if (returnType == int.class || returnType == Integer.class) {
+                                      param.setResult(0);
+                                  } else if (returnType == void.class) {
+                                      param.setResult(null);
+                                  } else if (returnType == boolean.class || returnType == Boolean.class) {
+                                      param.setResult(false);
+                                  } else if (returnType == String.class) {
+                                      param.setResult("");
+                                  } else if (returnType == byte.class || returnType == Byte.class) {
+                                      param.setResult((byte)0);
+                                  } else if (returnType == byte[].class) {
+                                      param.setResult(new byte[0]);
+                                  } else if (returnType == int[].class) {
+                                      param.setResult(new int[0]);
+                                  } else {
                                       param.setResult(null);
                                   }
                               }
                           }
-                      });
+                      };
+
+                      // Apply the shield to every single declared method in the class
+                      for (Method method : cameraMetadataNative.getDeclaredMethods()) {
+                          if (!Modifier.isAbstract(method.getModifiers())) {
+                              XposedBridge.hookMethod(method, universalShield);
+                          }
+                      }
                   } catch (Throwable t) { }
 
                   // 2. Video Fix (Bypass Nokia OZO Audio Codec crash)
                   try {
                       Class<?> mediaCodecClass = XposedHelpers.findClass("android.media.MediaCodec", lpparam.classLoader);
-                      XposedBridge.hookAllMethods(mediaCodecClass, "createEncoderByType", new XC_MethodHook() {
+                      XC_MethodHook audioHook = new XC_MethodHook() {
                           @Override
                           protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                               if (param.args != null && param.args.length > 0 && param.args[0] instanceof String) {
                                   String codecType = (String) param.args[0];
                                   if (codecType.contains("ozoaudio")) {
-                                      param.args[0] = "audio/mp4a-latm"; // Force standard AAC audio stream
+                                      param.args[0] = "audio/mp4a-latm"; // Redirect to standard AAC
                                   }
                               }
                           }
-                      });
+                      };
+                      XposedBridge.hookAllMethods(mediaCodecClass, "createEncoderByType", audioHook);
+                      XposedBridge.hookAllMethods(mediaCodecClass, "createByCodecName", audioHook);
                   } catch (Throwable t) { }
               }
           }
@@ -158,4 +162,3 @@ jobs:
         with:
           name: LuigiCameraFix-ReadyToInstall
           path: app/build/outputs/apk/debug/app-debug.apk
-          
