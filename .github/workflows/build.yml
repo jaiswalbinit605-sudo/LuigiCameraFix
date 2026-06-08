@@ -46,8 +46,8 @@ jobs:
                   applicationId "com.binit.luigicamerafix"
                   minSdk 28
                   targetSdk 34
-                  versionCode 7
-                  versionName "7.0-GhostKey"
+                  versionCode 4
+                  versionName "4.0-Stable"
               }
           }
           dependencies {
@@ -60,7 +60,7 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application android:label="Luigi Camera Fix">
                   <meta-data android:name="xposedmodule" android:value="true" />
-                  <meta-data android:name="xposeddescription" android:value="V7: Intercepts native Key creation and forces Ghost Keys for missing Oppo hardware." />
+                  <meta-data android:name="xposeddescription" android:value="Stable Fix: Targeted Timestamp + OZO Audio Bypass." />
                   <meta-data android:name="xposedminversion" android:value="82" />
               </application>
           </manifest>
@@ -73,8 +73,6 @@ jobs:
           cat << 'EOF' > app/src/main/java/com/binit/luigicamerafix/CameraHook.java
           package com.binit.luigicamerafix;
 
-          import java.lang.reflect.Method;
-          
           import de.robv.android.xposed.IXposedHookLoadPackage;
           import de.robv.android.xposed.XC_MethodHook;
           import de.robv.android.xposed.XposedBridge;
@@ -86,70 +84,39 @@ jobs:
               public void handleLoadPackage(LoadPackageParam lpparam) throws Throwable {
                   if (!lpparam.packageName.equals("com.oplus.camera")) return;
 
-                  // 1. Force the Android Framework to create "Ghost Keys" instead of throwing exceptions
+                  // 1. Photo Fix (Targeted Sniper Method)
                   try {
-                      Class<?> cameraMetadataNativeKey = XposedHelpers.findClass("android.hardware.camera2.impl.CameraMetadataNative$Key", lpparam.classLoader);
-                      XposedBridge.hookAllConstructors(cameraMetadataNativeKey, new XC_MethodHook() {
+                      Class<?> cameraMetadataNative = XposedHelpers.findClass("android.hardware.camera2.impl.CameraMetadataNative", lpparam.classLoader);
+                      XposedBridge.hookAllMethods(cameraMetadataNative, "get", new XC_MethodHook() {
                           @Override
                           protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                              if (param.hasThrowable() && param.getThrowable() instanceof IllegalArgumentException) {
-                                  // The framework panicked because the hardware is missing. We clear the error,
-                                  // leaving the Key object intact so the Oppo app doesn't abort the photo.
-                                  param.setThrowable(null); 
+                              if (param.hasThrowable()) {
+                                  Throwable t = param.getThrowable();
+                                  if (t instanceof IllegalArgumentException && 
+                                      t.getMessage() != null && 
+                                      t.getMessage().contains("com.oplus.sensor.timestamp")) {
+                                      param.setThrowable(null);
+                                      param.setResult(null);
+                                  }
                               }
                           }
                       });
                   } catch (Throwable t) { }
 
-                  // 2. Intercept the app trying to read/write the Ghost Keys and feed it dummy data
-                  try {
-                      Class<?> cameraMetadataNative = XposedHelpers.findClass("android.hardware.camera2.impl.CameraMetadataNative", lpparam.classLoader);
-                      XC_MethodHook getSetShield = new XC_MethodHook() {
-                          @Override
-                          protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                              if (param.args != null && param.args.length > 0 && param.args[0] != null) {
-                                  Object keyObj = param.args[0];
-                                  String name = (String) XposedHelpers.callMethod(keyObj, "getName");
-                                  
-                                  // If the Oppo app touches an unsupported hardware tag, bypass the native layer completely
-                                  if (name != null && name.startsWith("com.oplus.")) {
-                                      Method m = (Method) param.method;
-                                      if (m.getName().equals("get")) {
-                                          Class<?> type = (Class<?>) XposedHelpers.callMethod(keyObj, "getType");
-                                          if (type == Integer.class || type == int.class) param.setResult(0);
-                                          else if (type == Boolean.class || type == boolean.class) param.setResult(false);
-                                          else if (type == Byte.class || type == byte.class) param.setResult((byte)0);
-                                          else if (type == String.class) param.setResult("");
-                                          else if (type == byte[].class) param.setResult(new byte[0]);
-                                          else if (type == int[].class) param.setResult(new int[0]);
-                                          else param.setResult(null);
-                                      } else if (m.getName().equals("set")) {
-                                          param.setResult(null); // Instantly succeed the write request without doing anything
-                                      }
-                                  }
-                              }
-                          }
-                      };
-                      XposedBridge.hookAllMethods(cameraMetadataNative, "get", getSetShield);
-                      XposedBridge.hookAllMethods(cameraMetadataNative, "set", getSetShield);
-                  } catch (Throwable t) { }
-
-                  // 3. Video Fix (Bypass Nokia OZO Audio Codec crash)
+                  // 2. Video Fix (Bypass Nokia OZO Audio)
                   try {
                       Class<?> mediaCodecClass = XposedHelpers.findClass("android.media.MediaCodec", lpparam.classLoader);
-                      XC_MethodHook audioHook = new XC_MethodHook() {
+                      XposedBridge.hookAllMethods(mediaCodecClass, "createEncoderByType", new XC_MethodHook() {
                           @Override
                           protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                               if (param.args != null && param.args.length > 0 && param.args[0] instanceof String) {
                                   String codecType = (String) param.args[0];
                                   if (codecType.contains("ozoaudio")) {
-                                      param.args[0] = "audio/mp4a-latm"; // Force standard AAC
+                                      param.args[0] = "audio/mp4a-latm"; // Redirect to standard AAC
                                   }
                               }
                           }
-                      };
-                      XposedBridge.hookAllMethods(mediaCodecClass, "createEncoderByType", audioHook);
-                      XposedBridge.hookAllMethods(mediaCodecClass, "createByCodecName", audioHook);
+                      });
                   } catch (Throwable t) { }
               }
           }
