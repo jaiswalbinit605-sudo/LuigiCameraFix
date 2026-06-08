@@ -96,28 +96,32 @@ jobs:
                               if (param.hasThrowable() && param.getThrowable() instanceof IllegalArgumentException) {
                                   param.setThrowable(null); // Obliterate the crash exception
                                   
-                                  // Dynamically return safe fallback values based on what the method expected
-                                  Class<?> returnType = param.method.getReturnType();
-                                  if (returnType == int.class || returnType == Integer.class) {
-                                      param.setResult(0);
-                                  } else if (returnType == void.class) {
-                                      param.setResult(null);
-                                  } else if (returnType == boolean.class || returnType == Boolean.class) {
-                                      param.setResult(false);
-                                  } else if (returnType == String.class) {
-                                      param.setResult("");
-                                  } else if (returnType == byte.class || returnType == Byte.class) {
-                                      param.setResult((byte)0);
-                                  } else if (returnType == byte[].class) {
-                                      param.setResult(new byte[0]);
-                                  } else if (returnType == int[].class) {
-                                      param.setResult(new int[0]);
-                                  } else {
-                                      param.setResult(null);
+                                  // Safely cast to Method to fetch the return type
+                                  if (param.method instanceof Method) {
+                                      Class<?> returnType = ((Method) param.method).getReturnType();
+                                      if (returnType == int.class || returnType == Integer.class) {
+                                          param.setResult(0);
+                                      } else if (returnType == void.class) {
+                                          param.setResult(null);
+                                      } else if (returnType == boolean.class || returnType == Boolean.class) {
+                                          param.setResult(false);
+                                          } else if (returnType == String.class) {
+                                              param.setResult("");
+                                          } else if (returnType == byte.class || returnType == Byte.class) {
+                                              param.setResult((byte)0);
+                                          } else if (returnType == byte[].class) {
+                                              param.setResult(new byte[0]);
+                                          } else if (returnType == int[].class) {
+                                              param.setResult(new int[0]);
+                                          } else {
+                                              param.setResult(null);
+                                          }
+                                      } else {
+                                          param.setResult(null);
+                                      }
                                   }
                               }
-                          }
-                      };
+                          };
 
                       // Apply the shield to every single declared method in the class
                       for (Method method : cameraMetadataNative.getDeclaredMethods()) {
@@ -162,3 +166,4 @@ jobs:
         with:
           name: LuigiCameraFix-ReadyToInstall
           path: app/build/outputs/apk/debug/app-debug.apk
+          
